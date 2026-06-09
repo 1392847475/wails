@@ -51,6 +51,8 @@ import BasicInfo from './components/BasicInfo.vue'
 import NetworkConfig from './components/NetworkConfig.vue'
 import SystemUpgrade from './components/SystemUpgrade.vue'
 import FactoryReset from './components/FactoryReset.vue'
+import DataExport from './components/DataExport.vue'
+import VoiceDispatch from './components/VoiceDispatch.vue'
 
 // Time logic
 const currentTime = ref('')
@@ -96,10 +98,10 @@ const menus = [
   { id: 'basic', label: '基本信息', iconBase: 'jbxx', component: markRaw(BasicInfo) },
   { id: 'network', label: '网络配置', iconBase: 'wlpz', component: markRaw(NetworkConfig) },
   { id: 'upgrade', label: '系统升级', iconBase: 'xtsj', component: markRaw(SystemUpgrade) },
-  { id: 'export', label: '数据导出', iconBase: 'sjdc', component: markRaw(BasicInfo) },
+  { id: 'export', label: '数据导出', iconBase: 'sjdc', component: markRaw(DataExport) },
   { id: 'check', label: '设备自检', iconBase: 'sbzj', component: markRaw(BasicInfo) },
   { id: 'topology', label: '网络拓扑', iconBase: 'wltb', component: markRaw(BasicInfo) },
-  { id: 'voice', label: '语音调度', iconBase: 'yydd', component: markRaw(BasicInfo) },
+  { id: 'voice', label: '语音调度', iconBase: 'yydd', component: markRaw(VoiceDispatch) },
   { id: 'reset', label: '恢复出厂', iconBase: 'hfcc', component: markRaw(FactoryReset) },
 ]
 
@@ -149,6 +151,13 @@ const handleKeyDown = (e: KeyboardEvent) => {
       e.preventDefault()
       currentMenuIndex.value = menuIndex.value
       activeZone.value = 'content'
+      
+      // 添加延时或nextTick确保组件渲染完成并暴露方法
+      setTimeout(() => {
+        if (contentComponent.value && typeof contentComponent.value.handleKeyDown === 'function') {
+          // 初始化子组件的焦点
+        }
+      }, 0)
     }
   } else if (activeZone.value === 'content' || activeZone.value === 'popup') {
     if (contentComponent.value && typeof contentComponent.value.handleKeyDown === 'function') {

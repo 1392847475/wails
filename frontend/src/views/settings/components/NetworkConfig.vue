@@ -62,7 +62,7 @@
           <span class="label">通讯状态</span>
           <div class="value-with-icon">
             <span class="value">已断开</span>
-            <img :src="IconRetry" class="action-icon" />
+            <!-- <img :src="IconRetry" class="action-icon" /> -->
           </div>
         </div>
       </template>
@@ -1085,6 +1085,8 @@ defineExpose({ handleKeyDown })
   position: fixed;
   top: 0;
   left: 0;
+  right:0;
+  margin: 0 auto;
   width: 1280px;
   height: 800px;
   background-color: rgba(0, 0, 0, 0.5);
