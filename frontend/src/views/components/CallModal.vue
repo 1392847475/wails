@@ -2,7 +2,7 @@
   <div class="modal-overlay" v-if="isOpen">
     <div class="call-modal-content">
       <div class="modal-header">
-        <div class="modal-title">语音调度</div>
+        <div class="modal-title">{{ title }}</div>
         <div class="close-btn" @click="handleClose">✕</div>
       </div>
       <div class="call-info">
@@ -75,6 +75,10 @@ const props = defineProps({
   isActive: { // 当前组件是否拥有焦点处理权
     type: Boolean,
     default: false
+  },
+  title: {
+    type: String,
+    default: '语音调度'
   },
   targetInfo: {
     type: Object,

@@ -90,12 +90,12 @@
                 <img :src="getImg('icon-temperature')" class="env-icon" />
                 <div class="env-info">
                   <div class="env-name">温差</div>
-                  <div class="env-val">0.5 <span class="unit">℃</span></div>
+                  <div class="env-val">{{ tempDiff }} <span class="unit">℃</span></div>
                 </div>
               </div>
               <div class="env-details">
-                <div class="detail-row"><span>密闭温度</span><span>24.0</span></div>
-                <div class="detail-row"><span>环境温度</span><span>23.5</span></div>
+                <div class="detail-row"><span>密闭温度</span><span>{{ envData.CT }}</span></div>
+                <div class="detail-row"><span>环境温度</span><span>{{ envData.AT }}</span></div>
               </div>
             </div>
             
@@ -106,12 +106,12 @@
                 <img :src="getImg('icon-pressure')" class="env-icon" />
                 <div class="env-info">
                   <div class="env-name">压强差</div>
-                  <div class="env-val">199.5 <span class="unit">kPa</span></div>
+                  <div class="env-val">{{ pressureDiff }} <span class="unit">kPa</span></div>
                 </div>
               </div>
               <div class="env-details">
-                <div class="detail-row"><span>密闭压强</span><span>98.5</span></div>
-                <div class="detail-row"><span>环境压强</span><span>-101.0</span></div>
+                <div class="detail-row"><span>密闭压强</span><span>{{ envData.CP }}</span></div>
+                <div class="detail-row"><span>环境压强</span><span>{{ envData.AP }}</span></div>
               </div>
             </div>
 
@@ -122,12 +122,12 @@
                 <img :src="getImg('icon-CH4')" class="env-icon" />
                 <div class="env-info">
                   <div class="env-name">甲烷</div>
-                  <div class="env-val">0~0.8 <span class="unit">%</span></div>
+                  <div class="env-val">{{ ch4Diff }} <span class="unit">%</span></div>
                 </div>
               </div>
               <div class="env-details">
-                <div class="detail-row"><span>密闭甲烷</span><span>0.42</span></div>
-                <div class="detail-row"><span>环境甲烷</span><span>0.20</span></div>
+                <div class="detail-row"><span>密闭甲烷</span><span>{{ envData.CH4 }}</span></div>
+                <div class="detail-row"><span>环境甲烷</span><span>{{ envData.CH4_amb }}</span></div>
               </div>
             </div>
           </div>
@@ -190,8 +190,13 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import GasChart from './components/GasChart.vue'
 import TrendChart from './components/TrendChart.vue'
 import { useRouter } from 'vue-router'
+import MqttService from '../../utils/mqtt'
+import { getSubstationInfo } from '../../api/modules/substation'
+import { getPointHistory } from '../../api/modules/point'
 
 const router = useRouter()
+
+const mqttService = ref<MqttService | null>(null)
 
 const isLoading = ref(true)
 const progress = ref(0)
@@ -224,6 +229,20 @@ const activeTab = ref(0)
 // 焦点控制
 const localZone = ref('tabs') // 'tabs', 'left-top', 'left-bottom', 'right-grid', 'ports'
 const focusIndex = ref(0) // 右侧网格索引或底部端口索引
+
+// 环境数据 (左下侧)
+const envData = ref({
+  CT: 24.0, // 密闭温度
+  AT: 23.5, // 环境温度
+  CP: 98.5, // 密闭压强
+  AP: -101.0, // 环境压强
+  CH4: 0.42, // 密闭甲烷
+  CH4_amb: 0.20 // 环境甲烷
+})
+
+const tempDiff = computed(() => (envData.value.CT - envData.value.AT).toFixed(1))
+const pressureDiff = computed(() => (envData.value.CP - envData.value.AP).toFixed(1))
+const ch4Diff = computed(() => (envData.value.CH4 - envData.value.CH4_amb).toFixed(2))
 
 // 模拟气体数据
 const getImg = (name: string) => new URL(`../../assets/img/home/${name}.png`, import.meta.url).href
@@ -333,10 +352,87 @@ const handleKeyDown = (e: KeyboardEvent) => {
   }
 }
 
+let historyTimer: any
+
+const setupMqtt = (sn: string, stationCode: string) => {
+  const points = ['CO2', 'CO', 'O2', 'C2H2', 'C2H4', 'CT', 'CP', 'AT', 'AP', 'CH4_amb', 'CH4']
+  const topics = points.map(p => `${sn}/${stationCode}/GD6/${p}`)
+  
+  mqttService.value = new MqttService({
+    host: '172.16.66.240',
+    port: 8083,
+    topic: topics
+  })
+  
+  mqttService.value.onMessage = (topic, messageStr) => {
+    try {
+      const payload = JSON.parse(messageStr)
+      if (payload.point_code) {
+        // 更新气体卡片的值
+        const targetGas = gasList.value.find(g => g.id === payload.point_code)
+        if (targetGas) {
+          targetGas.value = payload.value
+          if (payload.ts) {
+            const date = new Date(payload.ts)
+            const month = date.getMonth() + 1
+            const day = date.getDate()
+            const hours = String(date.getHours()).padStart(2, '0')
+            const minutes = String(date.getMinutes()).padStart(2, '0')
+            const seconds = String(date.getSeconds()).padStart(2, '0')
+            targetGas.time = `${month}/${day} ${hours}:${minutes}:${seconds}`
+          }
+        }
+        
+        // 更新左下角环境数据
+        if (payload.point_code in envData.value) {
+          envData.value[payload.point_code as keyof typeof envData.value] = payload.value
+        }
+      }
+    } catch (error) {
+      console.error('MQTT消息解析失败', error)
+    }
+  }
+  
+  mqttService.value.connect()
+}
+
+const initSubstation = async () => {
+  try {
+    const res = await getSubstationInfo()
+    if (res && res.code === 200 && res.data) {
+      setupMqtt(res.data.sn, res.data.station_code)
+    }
+  } catch (e) {
+    console.error('获取分站信息失败', e)
+    // 失败时用默认值兜底
+    setupMqtt('123456789', '001001')
+  }
+}
+
+const refreshHistory = async () => {
+  for (const gas of gasList.value) {
+    try {
+      const res = await getPointHistory({ data_point: gas.id })
+      if (res && res.code === 200 && res.data && res.data.items) {
+        gas.data = res.data.items.map((item: any) => item.value)
+      }
+    } catch (e) {
+      console.error(`获取${gas.id}历史数据失败`, e)
+    }
+  }
+}
+
 onMounted(() => {
   updateTime()
   timeInterval = setInterval(updateTime, 1000)
   window.addEventListener('keydown', handleKeyDown)
+  
+  // 初始化分站信息及 MQTT
+  initSubstation()
+  
+  // 历史数据定时刷新 (1分钟)
+  refreshHistory()
+  historyTimer = setInterval(refreshHistory, 60 * 1000)
   
   // 模拟加载进度
   const interval = setInterval(() => {
@@ -354,7 +450,11 @@ onMounted(() => {
 
 onUnmounted(() => {
   clearInterval(timeInterval)
+  clearInterval(historyTimer)
   window.removeEventListener('keydown', handleKeyDown)
+  if (mqttService.value) {
+    mqttService.value.disconnect()
+  }
 })
 </script>
 
